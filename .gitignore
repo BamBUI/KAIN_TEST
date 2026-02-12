@@ -97,3 +97,10 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+/[Aa]ssets/_Recovery/
+
+# Package cache folders (восстанавливаются через manifest.json)
+/[Pp]ackages/com.unity.*
+/[Pp]ackages/com.unity.2d.*
+/[Pp]ackages/com.unity.inputsystem/
