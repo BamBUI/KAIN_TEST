@@ -1,38 +1,44 @@
-using UnityEngine;
+п»їusing UnityEngine;
+using System.Collections;
 
 public class AudioManager : MonoBehaviour
 {
     [Header("Audio Sources")]
     [SerializeField] AudioSource musicSource;
-    [SerializeField] AudioSource sfxSource; // Для звуков эффектов
+    [SerializeField] AudioSource sfxSource;
 
     [Header("Audio Clips - General")]
     public AudioClip backgroundMusic;
 
+    [Header("Audio Clips - UI")]
+    public AudioClip[] buttonClickSounds;
+
     [Header("Audio Clips - Player")]
-    public AudioClip[] kainHurtSounds; // Массив звуков боли Каина
+    public AudioClip[] kainHurtSounds;
     public AudioClip kainDeathSound;
 
     [Header("Audio Clips - Enemies")]
-    public AudioClip[] enemyHurtSounds; // Массив звуков боли врага
+    public AudioClip[] enemyHurtSounds;
     public AudioClip enemyDeathSound;
 
     [Header("Audio Clips - Actions")]
-    public AudioClip[] swordSlashSounds; // Массив звуков удара мечом
+    public AudioClip[] swordSlashSounds;
 
-    // Ссылка на единственный экземпляр (Singleton Pattern)
+    // в”Ѓв”Ѓв”Ѓ SINGLETON в”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓ
     private static AudioManager instance;
+    public static AudioManager Instance => instance;
 
+    // в”Ѓв”Ѓв”Ѓ РРќРР¦РРђР›РР—РђР¦РРЇ в”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓ
     private void Awake()
     {
         if (instance == null)
         {
             instance = this;
-            DontDestroyOnLoad(gameObject); // Опционально: сохранить при смене сцен
+            DontDestroyOnLoad(gameObject);
         }
         else
         {
-            Destroy(gameObject); // Уничтожить дубликат
+            Destroy(gameObject);
             return;
         }
     }
@@ -42,20 +48,77 @@ public class AudioManager : MonoBehaviour
         if (musicSource != null && backgroundMusic != null)
         {
             musicSource.clip = backgroundMusic;
-            musicSource.loop = true; // Убедитесь, что музыка зациклена
+            musicSource.loop = true; // вњ… Р—РђР¦РРљР›РР’РђР•Рњ РјСѓР·С‹РєСѓ
             musicSource.Play();
         }
     }
 
-    // --- МЕТОДЫ ДЛЯ ВОСПРОИЗВЕДЕНИЯ ЗВУКОВ ---
+    // в”Ѓв”Ѓв”Ѓ РќРћР’Р«Р™ РњР•РўРћР”: РЎРјРµРЅР° РјСѓР·С‹РєРё РґР»СЏ РєРѕРЅРєСЂРµС‚РЅРѕР№ СЃС†РµРЅС‹ в”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓ
+    public void ChangeMusic(AudioClip newMusic, float fadeDuration = 0f)
+    {
+        if (musicSource == null || newMusic == null)
+        {
+            Debug.LogWarning("[AudioManager] Cannot change music: source or clip is null");
+            return;
+        }
 
-    // Воспроизвести случайный звук из массива
+        // Р•СЃР»Рё С‚РѕС‚ Р¶Рµ РєР»РёРї вЂ” РЅРµ РјРµРЅСЏРµРј
+        if (musicSource.clip == newMusic)
+        {
+            Debug.Log("[AudioManager] Music already playing, skipping change");
+            return;
+        }
+
+        if (fadeDuration > 0f)
+        {
+            StartCoroutine(FadeAndChangeMusic(newMusic, fadeDuration));
+        }
+        else
+        {
+            // РњРіРЅРѕРІРµРЅРЅР°СЏ СЃРјРµРЅР°
+            musicSource.Stop();
+            musicSource.clip = newMusic;
+            musicSource.loop = true; // вњ… Р—РђР¦РРљР›РР’РђР•Рњ РЅРѕРІСѓСЋ РјСѓР·С‹РєСѓ
+            musicSource.Play();
+            Debug.Log($"[AudioManager] Music changed to: {newMusic.name}");
+        }
+    }
+
+    // в”Ѓв”Ѓв”Ѓ COROUTINE: РџР»Р°РІРЅС‹Р№ РїРµСЂРµС…РѕРґ РјРµР¶РґСѓ РјСѓР·С‹РєРѕР№ в”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓ
+    private IEnumerator FadeAndChangeMusic(AudioClip newMusic, float duration)
+    {
+        // Fade out
+        float startVolume = musicSource.volume;
+        for (float t = 0; t < duration; t += Time.deltaTime)
+        {
+            musicSource.volume = Mathf.Lerp(startVolume, 0f, t / duration);
+            yield return null;
+        }
+
+        // РЎРјРµРЅР° С‚СЂРµРєР°
+        musicSource.Stop();
+        musicSource.clip = newMusic;
+        musicSource.loop = true; // вњ… Р—РђР¦РРљР›РР’РђР•Рњ РЅРѕРІСѓСЋ РјСѓР·С‹РєСѓ
+        musicSource.Play();
+
+        // Fade in
+        for (float t = 0; t < duration; t += Time.deltaTime)
+        {
+            musicSource.volume = Mathf.Lerp(0f, startVolume, t / duration);
+            yield return null;
+        }
+
+        musicSource.volume = startVolume;
+        Debug.Log($"[AudioManager] Music changed with fade to: {newMusic.name}");
+    }
+
+    // в”Ѓв”Ѓв”Ѓ РњР•РўРћР”Р« Р”Р›РЇ Р’РћРЎРџР РћРР—Р’Р•Р”Р•РќРРЇ Р—Р’РЈРљРћР’ в”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓ
     private void PlayRandomClipFromArray(AudioClip[] clips, AudioSource source)
     {
         if (clips != null && clips.Length > 0 && source != null)
         {
             int randomIndex = Random.Range(0, clips.Length);
-            if (clips[randomIndex] != null) // Проверка на null на всякий случай
+            if (clips[randomIndex] != null)
             {
                 source.PlayOneShot(clips[randomIndex]);
             }
@@ -66,7 +129,11 @@ public class AudioManager : MonoBehaviour
         }
     }
 
-    // --- Публичные методы для вызова из других скриптов ---
+    // в”Ѓв”Ѓв”Ѓ РџРЈР‘Р›РР§РќР«Р• РњР•РўРћР”Р« в”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓв”Ѓ
+    public void PlayButtonClickSound()
+    {
+        PlayRandomClipFromArray(buttonClickSounds, sfxSource);
+    }
 
     public void PlayKainHurtSound()
     {

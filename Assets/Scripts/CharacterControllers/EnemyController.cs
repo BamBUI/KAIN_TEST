@@ -1,117 +1,112 @@
 ﻿using UnityEngine;
 using Assets.Scripts.Generic;
 using Assets.Scripts.EnemyScripts;
-using Assets.Scripts.PlayerScripts;
 
 namespace Assets.Scripts.CharacterControllers
 {
     [RequireComponent(typeof(Rigidbody2D), typeof(Animator))]
-    public class EnemyController : MonoBehaviour
+    public class EnemyController : CharacterBase
     {
-        // ━━━ НАСТРОЙКИ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // ━━━ НАСТРОЙКИ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         [Header("AI Settings")]
+        [SerializeField] private EnemyBehaviorMode behaviorMode = EnemyBehaviorMode.Patrol;
         [SerializeField] private float aggroRange = 5f;
         [SerializeField] private float attackRange = 1.2f;
         [SerializeField] private float stopDistance = 0.05f;
+        [SerializeField] private PatrolRoute patrolRoute;
+        [SerializeField] private LayerMask wallLayer;  // + НОВОЕ: слой стен для Raycast
 
-        [Header("Health Settings")]
-        [SerializeField] private float maxHealth = 3f;
-
-        [Header("Attack Settings")]
-        [SerializeField] private float hitboxDuration = 0.1f;
-        [SerializeField] private float attackAnimationDuration = 0.5f;
-        [SerializeField] private float postAttackDelay = 0.3f;
-
-        [Header("Movement Settings")]
-        [SerializeField] private float moveSpeed = 3f;
-
-        [Header("Knockback Settings")]
-        [SerializeField] private float knockbackDistance = 0.4f;
-
-        [Header("References")]
-        [SerializeField] private Transform enemyAim;
-        [SerializeField] private MeleeWeapon meleeWeapon;
-
-        // ━━━ ЗАВИСИМОСТИ UNITY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        private Rigidbody2D rb;
-        private Animator animator;
+        // ━━━ ЗАВИСИМОСТИ UNITY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         private Vector2 spawnPosition;
-        private PlayerController cachedPlayer;
-        private Vector2 lastMoveDirection = Vector2.zero; // ← Для передачи в animatorCore
+        private Vector2 lastMoveDirection = Vector2.zero;
 
-        // ━━━ МОДУЛИ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        private EnemyHealthCore health;
+        // ━━━ МОДУЛИ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         private EnemyAICore ai;
         private EnemyMovementCore movement;
-        private EnemyAttackCore attack;
         private EnemyAnimatorCore animatorCore;
-        private KnockbackCore knockback;
-        private AudioManager audioManager;
 
-        // ━━━ ИНИЦИАЛИЗАЦИЯ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        private void Awake()
+        // ━━━ ИНИЦИАЛИЗАЦИЯ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        protected override void Awake()
         {
-            rb = GetComponent<Rigidbody2D>();
-            animator = GetComponent<Animator>();
-
-            if (rb == null) throw new System.NullReferenceException($"Rigidbody2D missing on {gameObject.name}");
-            if (animator == null) throw new System.NullReferenceException($"Animator missing on {gameObject.name}");
-            if (enemyAim == null) throw new System.NullReferenceException($"EnemyAim reference missing on {gameObject.name}");
+            // 1. Сначала инициализируем базу (создаёт health, attack, knockback, rb, animator)
+            base.Awake();
 
             spawnPosition = transform.position;
 
-            // Создаём модули
-            health = new EnemyHealthCore(maxHealth);
-            ai = new EnemyAICore(aggroRange, attackRange, stopDistance, spawnPosition);
-            movement = new EnemyMovementCore(rb, enemyAim, moveSpeed);
-            attack = new EnemyAttackCore(hitboxDuration, attackAnimationDuration, postAttackDelay);
-            knockback = new KnockbackCore(rb);
-            animatorCore = new EnemyAnimatorCore(animator, movement, health, attack); // ← ЕДИНСТВЕННЫЙ источник анимации
+            // 2. Создаём AI модуль с режимом поведения и слоем стен
+            ai = new EnemyAICore(
+                aggroRange,
+                attackRange,
+                stopDistance,
+                spawnPosition,
+                behaviorMode,
+                wallLayer  // + Передаём слой стен для Raycast
+            );
 
-            // Подписка ТОЛЬКО на события физики/логики (НЕ анимации!)
-            health.OnFaintStart += OnFaintStart; // ← Физика: фиксация тела
-            health.OnDeath += HandleDeath;       // ← Логика: отключение скрипта
-
-            attack.OnHitboxEnable += OnHitboxEnable;
-            attack.OnHitboxDisable += OnHitboxDisable;
-
-            audioManager = FindFirstObjectByType<AudioManager>();
-            if (audioManager == null)
+            // 3. Инициализация патруля (только для Patrol режима)
+            if (patrolRoute != null && behaviorMode == EnemyBehaviorMode.Patrol)
             {
-                Debug.LogError("AudioManager not found in the scene!");
+                Debug.Log($"[EnemyController] {gameObject.name} - PatrolRoute assigned with {patrolRoute.WaypointCount} waypoints");
+                ai.SetPatrolRoute(patrolRoute);
+
+                // Проверка каждой точки
+                for (int i = 0; i < patrolRoute.WaypointCount; i++)
+                {
+                    var wp = patrolRoute.GetWaypoint(i);
+                    if (wp != null)
+                    {
+                        Debug.Log($"  └─ Waypoint {i}: {wp.name} at {wp.transform.position}");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"  └─ Waypoint {i}: NULL!");
+                    }
+                }
             }
+            else if (behaviorMode == EnemyBehaviorMode.Patrol)
+            {
+                Debug.LogWarning($"[EnemyController] {gameObject.name} - Patrol mode but NO PatrolRoute assigned!");
+            }
+            else
+            {
+                Debug.Log($"[EnemyController] {gameObject.name} - Behavior Mode: {behaviorMode}");
+            }
+
+            // 4. Создаём остальные модули
+            movement = new EnemyMovementCore(rb, aimTransform, moveSpeed);
+            animatorCore = new EnemyAnimatorCore(animator, movement, health, attack);
+
+            // 5. Подписка на события
+            health.OnDeath += HandleDeath;
+            ai.OnReturnToSpawnStart += OnReturnToSpawnStart;
+            ai.OnReturnToSpawnComplete += OnReturnToSpawnComplete;
+            ai.OnPatrolWaypointReached += OnPatrolWaypointReached;
         }
 
-        private void Start()
+        protected override void Start()
         {
-            cachedPlayer = GameObject.FindGameObjectWithTag("Player")?.GetComponent<PlayerController>();
-            if (meleeWeapon != null)
-                meleeWeapon.gameObject.SetActive(false);
+            base.Start();
         }
 
-        // ━━━ ОБНОВЛЕНИЕ ЛОГИКИ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        private void Update()
+        // ━━━ ОБНОВЛЕНИЕ ЛОГИКИ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        protected override void Update()
         {
+            // База уже проверяет IsDead() и обновляет health.Update() и attack.Update()
+            base.Update();
+
             if (health.IsDead()) return;
 
             // Обновляем кэш игрока
-            if (cachedPlayer == null || cachedPlayer.IsDead())
-            {
-                cachedPlayer = GameObject.FindGameObjectWithTag("Player")?.GetComponent<PlayerController>();
-            }
+            var player = FindFirstObjectByType<PlayerController>();
+            Vector2? playerPos = player != null && !player.IsDead() ? player.transform.position : (Vector2?)null;
+            bool playerIsDead = player == null || player.IsDead();
 
-            Vector2? playerPos = cachedPlayer != null ? cachedPlayer.transform.position : (Vector2?)null;
-            bool playerIsDead = cachedPlayer == null || cachedPlayer.IsDead();
-
-            health.Update(Time.deltaTime);
-            attack.Update(Time.deltaTime);
-
+            // AI логика
             Vector2 moveDir = ai.GetMoveDirection(transform.position, playerPos, playerIsDead);
-            lastMoveDirection = moveDir; // ← Сохраняем для аниматора
+            lastMoveDirection = moveDir;
 
-            bool shouldAttack = playerPos.HasValue &&
-                               ai.ShouldAttack(transform.position, playerPos.Value, attack.IsAttacking(), health.IsHurt());
-
+            // ━━━ ДВИЖЕНИЕ (единый код для всех режимов) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            // Избегание перекрытия с игроком
             if (playerPos.HasValue && ai.IsOverlapping(transform.position, playerPos.Value))
             {
                 Vector2 escapeDir = ai.GetEscapeDirection(transform.position, playerPos.Value);
@@ -119,13 +114,16 @@ namespace Assets.Scripts.CharacterControllers
                 moveDir = Vector2.zero;
             }
 
+            // Физика движения
             movement.UpdatePhysics(
                 moveDirection: moveDir,
                 isAttacking: attack.IsAttacking(),
-                isHurt: health.IsHurt() || health.IsFainting() || health.IsDead() // ← ТРИ состояния!
+                isHurt: health.IsHurt() || health.IsFainting() || health.IsDead()
             );
 
-            if (shouldAttack && !attack.IsAttacking() && !health.IsHurt() && !health.IsFainting())
+            // Атака
+            if (playerPos.HasValue &&
+                ai.ShouldAttack(transform.position, playerPos.Value, attack.IsAttacking(), health.IsHurt()))
             {
                 Vector2 attackDir = playerPos.HasValue
                     ? (playerPos.Value - (Vector2)transform.position).normalized
@@ -139,73 +137,64 @@ namespace Assets.Scripts.CharacterControllers
             if (health.IsDead() || health.IsFainting()) return;
 
             // 1. Поворот взгляда
-            if (cachedPlayer != null && !cachedPlayer.IsDead() && !health.IsHurt())
+            var player = FindFirstObjectByType<PlayerController>();
+            if (player != null && !player.IsDead() && !health.IsHurt())
             {
                 movement.UpdateAimRotation(
-                    lookTargetPosition: cachedPlayer.transform.position,
+                    lookTargetPosition: player.transform.position,
                     enemyPosition: transform.position,
                     shouldLook: true
                 );
             }
 
-            // 2. Обновление анимации — ЕДИНСТВЕННЫЙ вызов к аниматору
+            // 2. Обновление анимации
             animatorCore.UpdateAnimation(lastMoveDirection);
         }
 
-        // ━━━ ОБРАБОТЧИКИ ФИЗИКИ/ЛОГИКИ (НЕ АНИМАЦИИ!) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // ━━━ ОБРАБОТЧИКИ ФИЗИКИ/ЛОГИКИ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         private void OnFaintStart()
         {
-            // ФИЗИКА: фиксируем тело при обмороке
             rb.bodyType = RigidbodyType2D.Kinematic;
         }
 
-        private void OnHitboxEnable()
+        protected override void OnHitboxEnable()
         {
-            if (meleeWeapon != null)
+            base.OnHitboxEnable();
+
+            if (audioManager != null)
             {
-                meleeWeapon.ResetHit();
-                meleeWeapon.gameObject.SetActive(true);
-                if (audioManager != null)
-                {
-                    // Предположим, вы добавили в AudioManager новый метод и массив клипов
-                    audioManager.PlaySwordSlashSound(); // <-- НОВЫЙ МЕТОД
-                }
+                audioManager.PlaySwordSlashSound();
             }
         }
 
-        private void OnHitboxDisable()
+        protected override void OnHitboxDisable()
         {
-            if (meleeWeapon != null)
-                meleeWeapon.gameObject.SetActive(false);
+            base.OnHitboxDisable();
         }
 
-        // ━━━ ПОЛУЧЕНИЕ УРОНА ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        public void TakeDamage(float damage, Vector2 playerPosition)
+        // ━━━ ПОЛУЧЕНИЕ УРОНА ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        public override void TakeDamage(float damage, Vector2 playerPosition)
         {
-            // Воспроизвести звук боли
             if (audioManager != null)
             {
                 audioManager.PlayEnemyHurtSound();
             }
 
-            if (health.IsDead() || health.IsHurt() || health.IsFainting()) return;
+            if (health.IsDead() || health.IsInvincible()) return;
 
             knockback.ApplyFromAttacker(transform.position, playerPosition, knockbackDistance);
             health.TakeDamage(damage);
         }
 
-        // ━━━ СОБЫТИЯ ИЗ АНИМАТОРА (временно — будут удалены после таймеров) ━━━━━━━━━━━━━━━━━━━━━
+        // ━━━ СОБЫТИЯ ИЗ АНИМАТОРА ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         public void OnHurtAnimationFinished()
         {
-            Debug.Log("[DEBUG] OnHurtAnimationFinished called!");
-            if (!health.IsDead() && !health.IsFainting())
-                health.OnHurtAnimationFinished();
+            Debug.Log("[DEBUG] OnHurtAnimationFinished called (stub)!");
         }
 
         public void OnFaintAnimationFinished()
         {
-            if (health.IsFainting() && !health.IsDead())
-                health.OnFaintAnimationFinished();
+            Debug.Log("[DEBUG] OnFaintAnimationFinished called (stub)!");
         }
 
         public void OnDeathAnimationFinished()
@@ -213,41 +202,66 @@ namespace Assets.Scripts.CharacterControllers
             Destroy(gameObject);
         }
 
-        // ━━━ ОБРАБОТКА СМЕРТИ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        private void HandleDeath()
+        // ━━━ ОБРАБОТКА СМЕРТИ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        protected override void HandleDeath()
         {
-            // Воспроизвести звук смерти
+            base.HandleDeath();
+
             if (audioManager != null)
             {
                 audioManager.PlayEnemyDeathSound();
             }
+
             enabled = false;
 
-            if (meleeWeapon != null)
-                meleeWeapon.gameObject.SetActive(false);
-
-            // ФИЗИКА: фиксируем тело при смерти
-            rb.bodyType = RigidbodyType2D.Kinematic;
-            rb.linearVelocity = Vector2.zero;
+            Debug.Log("[EnemyController] HandleDeath called!");
         }
 
-        // ━━━ БЕЗОПАСНАЯ ОТПИСКА ОТ СОБЫТИЙ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        private void OnDestroy()
+        // ━━━ AI-СОБЫТИЯ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        private void OnReturnToSpawnStart()
         {
-            // Отписка только от событий, на которые подписывались в этом классе
+            Debug.Log($"[EnemyController] Return to spawn started | Mode: {behaviorMode}");
+        }
+
+        private void OnReturnToSpawnComplete()
+        {
+            Debug.Log($"[EnemyController] Return to spawn complete | Mode: {behaviorMode}");
+            ai.Reset();
+        }
+
+        private void OnPatrolWaypointReached()
+        {
+            Debug.Log($"[EnemyController] Waypoint reached: {ai.GetCurrentWaypointIndex()} | Mode: {behaviorMode}");
+        }
+
+        // ━━━ ОТПИСКА ОТ СОБЫТИЙ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+
+            if (ai != null)
+            {
+                ai.OnReturnToSpawnStart -= OnReturnToSpawnStart;
+                ai.OnReturnToSpawnComplete -= OnReturnToSpawnComplete;
+                ai.OnPatrolWaypointReached -= OnPatrolWaypointReached;
+            }
+
             if (health != null)
             {
                 health.OnFaintStart -= OnFaintStart;
                 health.OnDeath -= HandleDeath;
             }
-            if (attack != null)
-            {
-                attack.OnHitboxEnable -= OnHitboxEnable;
-                attack.OnHitboxDisable -= OnHitboxDisable;
-            }
         }
 
-        // ━━━ ВНЕШНИЙ ИНТЕРФЕЙС ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        public bool IsDead() => health.IsDead();
+        // ━━━ РЕАЛИЗАЦИЯ АБСТРАКТНЫХ МЕТОДОВ БАЗЫ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        protected override bool ShouldUseDeathFinishedEvent()
+        {
+            return false;
+        }
+
+        protected override void UpdateAnimation()
+        {
+            // Для врага анимация обновляется в LateUpdate через animatorCore
+        }
     }
 }
