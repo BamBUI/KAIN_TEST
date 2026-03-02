@@ -395,6 +395,10 @@ PrefabInstance:
       propertyPath: patrolRoute
       value: 
       objectReference: {fileID: 4660091876735123972}
+    - target: {fileID: 1617035893510377337, guid: 24c45d1d733230e4a86a1f8e4f239c4d, type: 3}
+      propertyPath: wallLayer.m_Bits
+      value: 257
+      objectReference: {fileID: 0}
     - target: {fileID: 7628293296245150597, guid: 24c45d1d733230e4a86a1f8e4f239c4d, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
